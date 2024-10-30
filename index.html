@@ -4,18 +4,84 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Dual Circles with Sigma.js</title>
+  <title>An Ontology of Segregation</title>
   <style>
+    body{
+      padding: 0px;
+      margin-top: 0px;
+      margin-left: 0px;
+      font-family:'Courier New', Courier, monospace;
+    }
     #sigma-container {
       width: 100vw;
-      height: 100vh;
-      border: 1px solid #ddd;
+      height: 100vh;        
+      padding: 0;
+      position: relative;
+      background-color: #c6d5e0;
+      font: 8px #fff;
+    }
+    header {
+      background-color: #333; /* Cor de fundo */
+      color: #fff; /* Cor do texto */
+      padding: 10px; /* Espaçamento interno */
+      text-align: left; /* Centralizar o texto */
+      font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      width: 100vw;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px; /* Tamanho do título */
+    }
+    img {
+      text-align: left;
+    }
+    #node-search {
+      top: 20px;
+      right: 20px;
+      width: 180px; 
+      margin-top: 20px;
+      padding: 8px;      
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      font-size: 14px;
+      z-index: 10;
+    }
+    #search-container {
+      position: fixed;
+      top: 110px;
+      margin-left: 10px;
+      display:inline;
+      gap: 8px;
+      z-index: 1;
+    }
+    #search-button {    
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      background-color: #007bff;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
     }
   </style>
 </head>
 
 <body>
-  <div id="sigma-container"></div>
+  <header>
+    <img src="src/assets/logo-seg-ont1.png" width="5%"/>&nbsp;&nbsp;&nbsp;<h1>An Ontology of Segregation</h1>
+  </header>
+   
+  <div id="sigma-container">
+    <div id="search-container">
+      <input type="text" id="node-search" placeholder="Search for a node..." />
+      <button id="search-button">Search</button>
+      <ul id="suggestions" style="top: 60px; right: 20px; font-family: sans-serif; background: #fff; list-style:none; padding: 0; border: 0px; width: 320px; max-height: 120px; overflow-y: auto; display: none;"></ul>
+    </div>       
+
+  </div>
   <script type="module" src="/src/main.js"></script>
 </body>
 
