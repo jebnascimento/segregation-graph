@@ -10,6 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sigma/edge-curve": "^3.0.0-beta.16",
+    "@sigma/node-border": "^3.0.0-beta.7",
+    "bootstrap": "^5.3.3",
     "graphology": "^0.25.4",
     "graphology-graphml": "^0.5.2",
     "react": "^18.3.1",

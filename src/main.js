@@ -1,6 +1,12 @@
 import Sigma from 'sigma';
 import Graph from 'graphology';
 import { parse } from 'graphology-graphml';
+import { createNodeBorderProgram, NodeBorderProgram } from "@sigma/node-border";
+import EdgeCurveProgram from "@sigma/edge-curve";
+
+
+
+
 
 function lightenColor(color, factor = 1.2) {
   const rgb = color.match(/\d+/g);
@@ -15,101 +21,133 @@ function lightenColor(color, factor = 1.2) {
 async function loadGraph() {
   const response = await fetch('/src/s_network4.graphml');
   const graphml = await response.text();
+  
 
   const graph = parse(Graph, graphml);
   graph.forEachNode((node, attributes) => {
     const forcedSize = 15;
-    graph.setNodeAttribute(node, 'size', forcedSize);
-    graph.setNodeAttribute(node, 'label', graph.getNodeAttribute(node, 'label') || '');
-    graph.setNodeAttribute(node, 'font', {
-      size: 12,
-      family: 'Verdana',
-      color: '#333333'
-    });
+    graph.setNodeAttribute(node, 'size', forcedSize);   
+    graph.setNodeAttribute(node, 'label', graph.getNodeAttribute(node, 'label') || '');    
+    graph.setNodeAttribute(node, 'borderColor', '#b3b3b3');
+    graph.setNodeAttribute(node, 'borderSize', 0);
+    graph.setNodeAttribute(node, "labelFont", "bold 8pt Tahoma");
+    console.log('Nó:', node, attributes);    
+    const isInnerCircle = attributes.size < 20; // Exemplo: identifica nós menores como parte do círculo interno
+    graph.setNodeAttribute(node, 'innerCircle', isInnerCircle);
   });
   graph.forEachEdge((edge, attributes, source, target) => {
     const sourceColor = graph.getNodeAttribute(source, 'color');
     const targetColor = graph.getNodeAttribute(target, 'color');
     const rgbColor = sourceColor || targetColor || 'rgb(0, 0, 0)';
-    const transparentColor = rgbColor + "B3";
+    const transparentColor = rgbColor + "E6";
     graph.setEdgeAttribute(edge, 'color', transparentColor);
+    
   });
-
+ 
   return graph;
 }
 
-// Renderizador personalizado para nós com círculos duplos e rótulos
-const customNodeRenderer = (context, data) => {
-  context.fillStyle = data.color || '#FF0000';
-  context.beginPath();
-  context.arc(data.x, data.y, data.size, 0, Math.PI * 2);
-  context.fill();
-  
-  context.fillStyle = data.innerColor || '#0000FF';
-  context.beginPath();
-  context.arc(data.x, data.y, data.size, 0, Math.PI * 2);
-  context.fill();
+function highlightNode(nodeId, graph, sigmaInstance) {
+  // Ajusta a opacidade para todos os nós e arestas
+  graph.forEachNode((node) => {
+    graph.setNodeAttribute(node, 'opacity', 0.2); // Nós não relacionados ficam mais transparentes
+  });
 
-  const label = data.label || '';
-  if (label) {
-    context.fillStyle = data.font.color || '#000';
-    context.font = `${data.font.size}px ${data.font.family}`;
-    context.textAlign = 'center'; 
-    context.textBaseline = 'middle'; 
-    context.fillText(label, data.x, data.y - (data.size + 5));
-  }
-};
+  graph.forEachEdge((edge) => {
+    graph.setEdgeAttribute(edge, 'opacity', 0.2); // Arestas não relacionadas ficam mais transparentes
+  });
 
-const customEdgeRenderer = (context, data) => {
-  const opacity = data.opacity !== undefined ? data.opacity : 1;
-  context.globalAlpha = opacity;
+  // Mantém opacidade total para o nó selecionado e seus vizinhos
+  graph.setNodeAttribute(nodeId, 'opacity', 1); // Nó selecionado em destaque
+  graph.forEachNeighbor(nodeId, (neighbor) => {
+    graph.setNodeAttribute(neighbor, 'opacity', 1); // Vizinhos em destaque
+  });
 
-  const sourceColor = data.source.color || '#000000';
-  const targetColor = data.target.color || '#000000';
+  // Mantém opacidade total para as arestas conectadas ao nó selecionado
+  graph.forEachEdge((edge, attributes, source, target) => {
+    if (source === nodeId || target === nodeId) {
+      graph.setEdgeAttribute(edge, 'opacity', 1); // Arestas conectadas em destaque
+    }
+  });
 
-  const gradient = context.createLinearGradient(data.source.x, data.source.y, data.target.x, data.target.y);
-  gradient.addColorStop(0, sourceColor);
-  gradient.addColorStop(1, targetColor);
+  sigmaInstance.refresh(); // Atualiza a visualização
+}
 
-  context.strokeStyle = gradient;
-  
-  context.beginPath();
-  context.moveTo(data.source.x, data.source.y);
-  context.lineTo(data.target.x, data.target.y);
-  context.stroke();
-
-  context.globalAlpha = 1;
-};
 
 // Função para lidar com o clique no nó e filtrar arestas
 function handleNodeClick(event, graph, sigmaInstance, state) {
-  const nodeId = event.node;
+  const nodeId = event.node; // ID do nó clicado
 
+  // Se não armazenamos os atributos originais, faça isso na primeira execução
+  if (!state.originalAttributes) {
+    state.originalAttributes = {
+      nodes: new Map(),
+      edges: new Map(),
+    };
+
+    // Armazena os atributos originais dos nós
+    graph.forEachNode((node) => {
+      state.originalAttributes.nodes.set(node, {
+        color: graph.getNodeAttribute(node, "color"),
+        size: graph.getNodeAttribute(node, "size"),
+        hidden: graph.getNodeAttribute(node, "hidden"),
+      });
+    });
+
+    // Armazena os atributos originais das arestas
+    graph.forEachEdge((edge) => {
+      state.originalAttributes.edges.set(edge, {
+        color: graph.getEdgeAttribute(edge, "color"),
+        hidden: graph.getEdgeAttribute(edge, "hidden"),
+      });
+    });
+  }
+
+  // Verifica se o nó clicado já está selecionado
   if (state.filteredNode === nodeId) {
-    graph.forEachNode((node) => graph.setNodeAttribute(node, 'hidden', false));
-    graph.forEachEdge((edge) => graph.setEdgeAttribute(edge, 'hidden', false));
+    // Restaura os atributos originais de todos os nós
+    state.originalAttributes.nodes.forEach((attributes, node) => {
+      graph.setNodeAttribute(node, "color", attributes.color);
+      graph.setNodeAttribute(node, "size", attributes.size);
+      graph.setNodeAttribute(node, "hidden", attributes.hidden);
+    });
+
+    // Restaura os atributos originais de todas as arestas
+    state.originalAttributes.edges.forEach((attributes, edge) => {
+      graph.setEdgeAttribute(edge, "color", attributes.color);
+      graph.setEdgeAttribute(edge, "hidden", attributes.hidden);
+    });
+
+    // Reseta o estado
     state.filteredNode = null;
   } else {
-    graph.forEachNode((node) => graph.setNodeAttribute(node, 'hidden', false));
-    graph.forEachEdge((edge) => graph.setEdgeAttribute(edge, 'hidden', false));
-
+    // Aplica o filtro para destacar o nó selecionado
     graph.forEachNode((node) => {
       if (node !== nodeId && !graph.hasEdge(nodeId, node) && !graph.hasEdge(node, nodeId)) {
-        graph.setNodeAttribute(node, 'hidden', true);
+        graph.setNodeAttribute(node, "color", "#f3f3f3"); // Nó não conectado
+      } else {
+        const originalColor = state.originalAttributes.nodes.get(node).color;
+        graph.setNodeAttribute(node, "color", originalColor); // Nó conectado ou selecionado
       }
     });
+
     graph.forEachEdge((edge) => {
       const [source, target] = graph.extremities(edge);
       if (source !== nodeId && target !== nodeId) {
-        graph.setEdgeAttribute(edge, 'hidden', true);
+        graph.setEdgeAttribute(edge, "hidden", true); // Esconde arestas não conectadas
+      } else {
+        graph.setEdgeAttribute(edge, "hidden", false); // Mostra arestas conectadas
       }
     });
 
+    // Atualiza o estado com o nó selecionado
     state.filteredNode = nodeId;
   }
 
+  // Atualiza a visualização
   sigmaInstance.refresh();
 }
+
 
 // Função para buscar um nó com base na entrada do usuário
 function searchNode(graph, sigmaInstance) {
@@ -117,7 +155,6 @@ function searchNode(graph, sigmaInstance) {
   const query = searchInput.value.trim();
 
   if (!query) return;
-
   let foundNode = null;
   graph.forEachNode((node, attributes) => {
     if (attributes.label && attributes.label.toLowerCase() === query.toLowerCase()) {
@@ -128,7 +165,6 @@ function searchNode(graph, sigmaInstance) {
   if (foundNode) {
     graph.forEachNode((node) => graph.setNodeAttribute(node, 'hidden', true));
     graph.forEachEdge((edge) => graph.setEdgeAttribute(edge, 'hidden', true));
-
     graph.setNodeAttribute(foundNode, 'hidden', false);
     graph.forEachNeighbor(foundNode, (neighbor) => {
       graph.setNodeAttribute(neighbor, 'hidden', false);
@@ -167,7 +203,6 @@ function showSuggestions(graph) {
       suggestionItem.textContent = label;
       suggestionItem.style.padding = '8px';
       suggestionItem.style.cursor = 'pointer';
-
       suggestionItem.addEventListener('click', () => {
         searchInput.value = label;
         suggestionsContainer.style.display = 'none';
@@ -188,18 +223,98 @@ loadGraph().then((graph) => {
   const container = document.getElementById('sigma-container');
   const searchInput = document.getElementById('node-search');
   const state = { filteredNode: null };
+  const nodeList = document.getElementById('node-list'); // Lista fixa
 
   const sigmaInstance = new Sigma(graph, container, {
-    nodeRenderer: customNodeRenderer,
-    edgeRenderer: customEdgeRenderer,    
+    defaultNodeType: "bordered",
+    drawingProperties: {labelThreshold: 0},
+    nodeProgramClasses: {
+      bordered:  createNodeBorderProgram({
+        borders: [
+          { size: { attribute: "borderSize", defaultValue: 0.05 }, color: { attribute: "borderColor" } },
+          { size: { fill: true }, color: { attribute: "color" } },
+        ],
+      }),
+    },
+    defaultEdgeType: "curve",
+    edgeProgramClasses: {
+      curve: EdgeCurveProgram,
+    },   
+  
   });
 
-  sigmaInstance.on('clickNode', (event) => handleNodeClick(event, graph, sigmaInstance, state));
+  if (!state.originalAttributes) {
+    state.originalAttributes = {
+      nodes: new Map(),
+      edges: new Map(),
+    };
 
+    // Armazena os atributos originais dos nós
+    graph.forEachNode((node) => {
+      state.originalAttributes.nodes.set(node, {
+        color: graph.getNodeAttribute(node, "color"),
+        size: graph.getNodeAttribute(node, "size"),
+        hidden: graph.getNodeAttribute(node, "hidden"),
+      });
+    });
+
+    // Armazena os atributos originais das arestas
+    graph.forEachEdge((edge) => {
+      state.originalAttributes.edges.set(edge, {
+        color: graph.getEdgeAttribute(edge, "color"),
+        hidden: graph.getEdgeAttribute(edge, "hidden"),
+      });
+    });
+  }
+  
+  const innerCircleNodes = [];
+  graph.forEachNode((node, attributes) => {
+    const isInnerCircle = attributes.size < 30; // Exemplo: define círculo interno
+    graph.setNodeAttribute(node, 'innerCircle', isInnerCircle);
+
+    if (isInnerCircle) {
+      innerCircleNodes.push({ id: node, label: attributes.label, color: attributes.color });
+    }
+  }); 
+   
+  // Adiciona os 20 primeiros itens na lista
+  innerCircleNodes.slice(0, 32).forEach((node) => {
+    const listItem = document.createElement('li');
+    listItem.textContent = node.label || `Node ${node.id}`;
+    listItem.dataset.nodeId = node.id; // Associa o ID do nó ao item
+    listItem.style.backgroundColor = node.color || '#007bff'; // Cor de fundo
+    nodeList.appendChild(listItem);
+  });
+  
+  sigmaInstance.on('clickNode', (event) => handleNodeClick(event, graph, sigmaInstance, state));
+  
   document.getElementById('search-button').addEventListener('click', () => {
     searchNode(graph, sigmaInstance);
   });
 
+  function filterGraphByNode(nodeId) {
+    graph.forEachNode((node) => {
+      const connected = node === nodeId || graph.hasEdge(nodeId, node) || graph.hasEdge(node, nodeId);
+      graph.setNodeAttribute(node, 'hidden', !connected);
+    });
+
+    graph.forEachEdge((edge, attributes, source, target) => {
+      const connected = source === nodeId || target === nodeId;
+      graph.setEdgeAttribute(edge, 'hidden', !connected);
+    });
+
+    sigmaInstance.refresh(); // Atualiza a visualização
+  }
+
+  nodeList.addEventListener('click', (event) => {
+    const listItem = event.target.closest('li'); // Garante que clicou em um item da lista
+    if (!listItem) return;
+
+    const nodeId = listItem.dataset.nodeId; // Obtém o ID do nó associado
+    filterGraphByNode(nodeId); // Aplica o filtro no grafo
+  });
+  
   // Adiciona o evento de entrada de texto para exibir as sugestões de busca
   searchInput.addEventListener('input', () => showSuggestions(graph));
+  sigmaInstance.addPlugin(NodeBorder);
 });
